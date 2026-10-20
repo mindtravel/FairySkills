@@ -20,6 +20,8 @@
       load_more: "Load {n} more", generated: "generated", source: "Source: ",
       more_files: " and {n} files in total", dropped: "dropped {n} rows ({detail})",
       no_drops: "read {n} rows, none dropped", caveats: "Read this first",
+      categories: "Categories", cat_shown: "{n} of {total}", groups: "Groups",
+      cat_short: "{cats} categories, {shown} of {total} rows shown",
       joined: "joined {cols} from {n} files on {on}; {miss} rows without a match",
       load_failed: "Failed to load: ",
     },
@@ -34,6 +36,8 @@
       load_more: "再加载 {n} 条", generated: "生成于", source: "来源：",
       more_files: " 等 {n} 个文件", dropped: "丢弃 {n} 行（{detail}）",
       no_drops: "读取 {n} 行，无丢弃", caveats: "读之前先看",
+      categories: "分类", cat_shown: "{n} / {total}", groups: "分组",
+      cat_short: "{cats} 个分类，显示 {shown} / {total} 行",
       joined: "按 {on} 从 {n} 个文件关联 {cols}；{miss} 行无匹配",
       load_failed: "加载失败：",
     },
@@ -420,6 +424,8 @@
         cols: CFG.join.columns.join(", "), n: CFG.join.files.length, on: CFG.join.on, miss: CFG.join.unmatched,
       }));
     }
+    renderCategories();
+
     const prov = document.getElementById("provenance");
     if (prov && bits.length) {
       prov.hidden = false;
@@ -432,6 +438,34 @@
       box.hidden = false;
       box.innerHTML = "<b>" + t("caveats") + "</b><ul>" + caveats.map((c) => "<li>" + esc(c) + "</li>").join("") + "</ul>";
     }
+  }
+
+  /* ---------- categories ---------- */
+
+  // Totals come from the scan, not from the records: a sampled page must say
+  // how much of each category exists, or a thin category reads as a small one.
+  function renderCategories() {
+    const box = document.getElementById("categories");
+    const info = CFG.categories;
+    if (!box || !info || !info.rows) return;
+    const names = Object.keys(info.rows).sort();
+    const total = names.reduce((a, n) => a + info.rows[n], 0);
+    const shown = names.reduce((a, n) => a + (info.shown[n] || 0), 0);
+    const rows = names
+      .map((n) => {
+        const got = info.shown[n] || 0;
+        const all = info.rows[n];
+        return "<tr><td>" + esc(n) + "</td><td>" + esc(t("cat_shown", { n: got, total: all })) + "</td></tr>";
+      })
+      .join("");
+    const groups = Object.entries(info.groups || {})
+      .map(([g, n]) => "<span class=\"badge\">" + esc(g) + "=" + n + "</span>")
+      .join(" ");
+    box.hidden = false;
+    box.innerHTML =
+      "<summary>" + esc(t("cat_short", { cats: names.length, shown: shown, total: total })) + "</summary>" +
+      (groups ? "<p>" + esc(t("groups")) + " " + groups + "</p>" : "") +
+      '<table class="records"><tbody>' + rows + "</tbody></table>";
   }
 
   loadRecords()

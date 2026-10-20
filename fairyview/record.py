@@ -32,6 +32,7 @@ def make_record(
     facets: Iterable[str] = (),
     id_field: str | None = None,
     provenance: dict | None = None,
+    extra_facets: dict | None = None,
 ) -> ReviewRecord | None:
     """Build a record, or None when the row has nothing to show.
 
@@ -55,7 +56,7 @@ def make_record(
 
     return ReviewRecord(
         id=record_id,
-        facets={name: row.get(name) for name in facets if name in row},
+        facets={**{name: row.get(name) for name in facets if name in row}, **(extra_facets or {})},
         fields=record_fields,
         panels=rendered.panels,
         scores=rendered.scores,

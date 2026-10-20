@@ -13,6 +13,8 @@
 - Compressed data files are rejected; decompress first.
 
 ### Added
+- `[category]`: a derived facet from a file name or a column, optional groups,
+  and per-category coverage (rows in the source vs rows on the page).
 - `_file` virtual column (facet / stratify by source file), `exclude` patterns,
   and `[source.join]` for left-joining columns from other raw files by key.
 - `[mask]`: configurable chat loss/prompt roles, regex rules that produce spans,

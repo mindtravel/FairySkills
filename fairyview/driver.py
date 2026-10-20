@@ -11,6 +11,7 @@ from collections import Counter
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
+from fairyview import category as category_mod
 from fairyview import mask
 from fairyview.record import make_record
 from fairyview.sample import sample_records
@@ -60,6 +61,7 @@ def records_from_view(
     view: View,
     mask_cfg: dict | None = None,
     stats: dict | None = None,
+    category_cfg: dict | None = None,
 ) -> list[ReviewRecord]:
     """View -> records.
 
@@ -78,10 +80,14 @@ def records_from_view(
 
     projection = list(dict.fromkeys([*view.columns(), *wanted]))
     stratify = (view.sample_cfg or {}).get("stratify")
+    # A derived category is a facet too: make sure both its column and the
+    # facet/stratify built from it are read.
+    cat = category_mod.parse(category_cfg, source.columns if category_cfg else ())
     # The scan reads only cheap key columns; the full projection (often a
     # nested `messages` column) is decoded for sampled rows only. Scanning with
     # the full projection decoded every conversation of a 1M-row export.
-    scan = list(dict.fromkeys([*wanted, *([stratify] if stratify else [])]))
+    scan = list(dict.fromkeys([*wanted, *([stratify] if stratify else []),
+                               *([cat.source] if cat else [])]))
     source.require(projection, owner=view.name)
     index = source.iter_index(scan, owner=view.name)
 
@@ -89,7 +95,13 @@ def records_from_view(
         index = sample_records(
             index,
             view.sample_cfg,
-            facet_key=(lambda item: item[1].get(stratify)) if stratify else (lambda item: None),
+            facet_key=(
+                (lambda item: cat.derive(item[1].get(cat.source)).get(stratify))
+                if cat and stratify in (cat.name, cat.group_name)
+                else (lambda item: item[1].get(stratify))
+            )
+            if stratify
+            else (lambda item: None),
         )
 
     out: list[ReviewRecord] = []
@@ -97,8 +109,10 @@ def records_from_view(
     stats["rows_examined"] = 0
     for batch in _batches(index):
         decoded = source.read([key for key, _ in batch], projection)
-        for key, _ in batch:
+        for key, light in batch:
             stats["rows_examined"] += 1
+            if cat:
+                cat.count(cat.derive(light.get(cat.source)))
             row = decoded.get(key)
             if row is None:
                 dropped.append((source.relative(key[0]), key[1], "row not decoded"))
@@ -108,6 +122,7 @@ def records_from_view(
                 dropped.append((source.relative(key[0]), key[1], "no panel produced"))
                 continue
             rendered.panels = mask.finalize_panels(rendered.panels, mask_cfg)
+            derived = cat.derive(row.get(cat.source)) if cat else None
             record = make_record(
                 key=key,
                 row=row,
@@ -116,10 +131,15 @@ def records_from_view(
                 facets=facets,
                 id_field=id_field,
                 provenance=view.provenance(),
+                extra_facets=derived,
             )
             if record is not None:
                 out.append(record)
+                if cat:
+                    cat.count_shown(derived)
 
+    if cat:
+        stats["categories"] = _category_counts(cat)
     _check_drops(view, dropped, stats)
     stats["records"] = len(out)
     stats["source_files"] = [
@@ -158,6 +178,16 @@ def _resolve_paths(cfg: dict, base: Path) -> None:
             cfg[side] = {**cfg[side], "path": resolve(cfg[side]["path"])}
 
 
+def _category_counts(cat) -> dict:
+    """Per-category totals: how many rows the source has, how many reached the page.
+
+    Totals come from the scan, so a sampled page still shows the population.
+    A readout of "22 of 22" is what tells a reviewer the sample covered the
+    category; without it, a thin category looks like a small category.
+    """
+    return {"name": cat.name, "rows": cat.totals, "shown": cat.shown, "groups": cat.group_totals()}
+
+
 def build_records(config: dict, config_path: Path, stats: dict | None = None) -> list[dict]:
     """Config -> serialized records.
 
@@ -171,6 +201,7 @@ def build_records(config: dict, config_path: Path, stats: dict | None = None) ->
     cfg["facets"] = config.get("facets") or cfg.get("facets") or []
     # `[mask]` is a top-level table; views read it from their config copy.
     cfg["mask"] = config.get("mask") or cfg.get("mask")
+    cfg["category"] = config.get("category") or cfg.get("category")
     sample_cfg = config.get("sample") or cfg.get("sample")
     kind = cfg["kind"]
     _resolve_paths(cfg, config_path.parent)

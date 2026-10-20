@@ -95,7 +95,7 @@ class RowAdapter:
         source = load_source(cfg)
         view = self._factory(cfg, source)
         view.sample_cfg = sample_cfg
-        return records_from_view(view, cfg.get("mask"), stats)
+        return records_from_view(view, cfg.get("mask"), stats, cfg.get("category"))
 
 
 class SourceAdapter:

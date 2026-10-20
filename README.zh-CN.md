@@ -111,6 +111,23 @@ columns = ["ground_truth"]          # 默认取关联文件的所有列
 
 没有匹配的行保留自己的列，在 manifest 和页面顶部计为"无匹配"，不算丢弃。关联 key 重复时 build 失败。
 
+**分类。** 不同 benchmark 把分类放在不同位置，在配置里映射成 facet，不需要改代码：
+
+```toml
+[category]                       # BFCL：分类在文件名里
+from = "_file"
+pattern = "BFCL_v4_(.*)[.]json"  # 最多一个捕获组
+name = "分类"
+groups = { "simple_python" = "单轮", "multi_turn_base" = "多轮" }
+group_name = "类型"               # 可选的二级 facet
+default_group = "其他"            # 不写则未映射的分类直接报错
+
+[category]                       # GAIA / BrowseComp：分类在列里
+from = "Level"
+```
+
+页面显示每个分类在源数据里有多少行、页面上显示了其中多少（`22 / 22`），否则抽样后的小分类看起来就像本身很小。`stratify` 可以直接写派生出来的 facet 名。分类只用于导航和核对抽样覆盖，不用于打分。
+
 **数据文件。** 只支持未压缩的 parquet、JSONL 和 JSON。压缩文件（`.gz`、`.bz2`、`.xz`、`.zst`）会被拒绝，需要先解压（`gunzip -k`）。JSONL 按字节偏移定位行，因此 build 过程中文件被修改会导致 build 失败。
 
 ## 页面功能

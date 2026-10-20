@@ -41,6 +41,19 @@ def _js_embed(obj, name: str) -> str:
     return f"window.{name} = {text};\n"
 
 
+def _page_facets(config: dict) -> list[str]:
+    """Facets the page offers. A derived category is one, but it is not a column
+    of the files, so it never enters the read projection."""
+    facets = list(config.get("facets") or [])
+    category = config.get("category") or {}
+    if not category:
+        return facets
+    names = [category.get("name", "category")]
+    if category.get("groups"):
+        names.append(category.get("group_name", "group"))
+    return list(dict.fromkeys([*facets, *[n for n in names if n not in facets]]))
+
+
 def build(config_path: str, out_dir: str) -> Path:
     config_path = Path(config_path)
     config = load_config(config_path)
@@ -85,7 +98,7 @@ def build(config_path: str, out_dir: str) -> Path:
         "title": config.get("title", "Data review"),
         "description": config.get("description", ""),
         "caveats": config.get("caveats", []),
-        "facets": config.get("facets", []),
+        "facets": _page_facets(config),
         "panel_layout": config.get("panel_layout", "side_by_side"),
         "lang": config.get("lang"),
         "page_size": int(config.get("page_size", 100)),
@@ -99,6 +112,7 @@ def build(config_path: str, out_dir: str) -> Path:
         "dropped": stats.get("dropped", {}),
         "source_files": stats.get("source_files", []),
         "join": stats.get("join"),
+        "categories": stats.get("categories"),
         "sharded": bool(shard_files),
     }
 
@@ -119,10 +133,12 @@ def build(config_path: str, out_dir: str) -> Path:
         "dropped": stats.get("dropped", {}),
         "source_files": stats.get("source_files", []),
         "join": stats.get("join"),
+        "categories": stats.get("categories"),
                 "shards": shard_files,
                 "schema_version": SCHEMA_VERSION,
                 "source_files": stats.get("source_files", []),
         "join": stats.get("join"),
+        "categories": stats.get("categories"),
                 "rows_examined": stats.get("rows_examined"),
                 "dropped": stats.get("dropped", {}),
                 "dropped_examples": stats.get("dropped_examples", []),

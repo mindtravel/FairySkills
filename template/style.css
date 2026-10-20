@@ -95,3 +95,7 @@ body.blind .scores { visibility: hidden; }
   .panels { flex-direction: column; }
   .controls { position: static; }
 }
+
+#categories summary { cursor: pointer; }
+#categories table { margin-top: 6px; width: auto; }
+#categories td { padding: 1px 10px 1px 0; }

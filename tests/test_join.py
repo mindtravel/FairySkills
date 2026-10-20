@@ -78,3 +78,84 @@ def test_join_unknown_column_fails(tmp_path: Path):
     _bench(tmp_path)
     with pytest.raises(ValueError, match="not found"):
         build(str(_config(tmp_path, 'columns = ["nope"]')), str(tmp_path / "out"))
+
+
+def _cat_config(tmp_path: Path, extra: str) -> Path:
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'''title = "b"
+[sample]
+n = 100
+[source]
+kind = "columns_rows"
+path = "data"
+glob = "B_*.json"
+exclude = ["B_index.json"]
+{extra}
+''',
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_category_from_file_name_with_groups(tmp_path: Path):
+    _bench(tmp_path)
+    out = build(
+        str(_cat_config(tmp_path, '''
+[category]
+from = "_file"
+pattern = "B_(.*)\\\\.json"
+groups = { "simple" = "with-answer", "irrelevance" = "no-answer" }
+''')),
+        str(tmp_path / "out"),
+    )
+    manifest = json.loads((out / "manifest.json").read_text())
+    records = _records(out)
+    cats = manifest["categories"]
+    assert cats["name"] == "category"
+    assert cats["rows"] == {"simple": 3, "irrelevance": 2}
+    assert cats["shown"] == cats["rows"]
+    assert cats["groups"] == {"no-answer": 2, "with-answer": 3}
+    assert {r["facets"]["category"] for r in records} == {"simple", "irrelevance"}
+    assert {r["facets"]["group"] for r in records} == {"with-answer", "no-answer"}
+
+
+def test_category_from_a_column(tmp_path: Path):
+    _jsonl(tmp_path / "data" / "L1.json", [{"id": "a", "Level": 1}, {"id": "b", "Level": 2}])
+    cfg = tmp_path / "l.toml"
+    cfg.write_text(
+        'title = "l"\n'
+        '[source]\nkind = "columns_rows"\npath = "data"\nglob = "L*.json"\nfacets = []\n'
+        '[category]\nfrom = "Level"\nname = "level"\n',
+        encoding="utf-8",
+    )
+    out = build(str(cfg), str(tmp_path / "out"))
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["categories"]["rows"] == {"1": 1, "2": 1}
+
+
+def test_unmapped_category_fails_the_build(tmp_path: Path):
+    _bench(tmp_path)
+    with pytest.raises(ValueError, match="has no group"):
+        build(
+            str(_cat_config(tmp_path, '''
+[category]
+from = "_file"
+pattern = "B_(.*)\\\\.json"
+groups = { "simple" = "with-answer" }
+''')),
+            str(tmp_path / "out"),
+        )
+
+
+def test_unmatched_pattern_fails_the_build(tmp_path: Path):
+    _bench(tmp_path)
+    with pytest.raises(ValueError, match="does not match"):
+        build(
+            str(_cat_config(tmp_path, '''
+[category]
+from = "_file"
+pattern = "NOPE_(.*)"
+''')),
+            str(tmp_path / "out"),
+        )

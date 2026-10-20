@@ -111,6 +111,23 @@ columns = ["ground_truth"]          # default: every column of the joined files
 
 A row without a match keeps its own columns and is counted as `unmatched` in the manifest and page header, not dropped. Duplicate join keys fail the build.
 
+**Categories.** Benchmarks declare their taxonomy in different places; map it to a facet in the config, not in code:
+
+```toml
+[category]                       # BFCL: category in the file name
+from = "_file"
+pattern = "BFCL_v4_(.*)[.]json"  # at most one capture group
+name = "category"
+groups = { "simple_python" = "single-turn", "multi_turn_base" = "multi-turn" }
+group_name = "type"              # optional second-level facet
+default_group = "other"          # else an unmapped category fails the build
+
+[category]                       # GAIA / BrowseComp: a column
+from = "Level"
+```
+
+The page shows how many rows each category has in the source and how many reached the page (`22 of 22`), because a sampled thin category otherwise reads as a small one. `stratify` accepts the derived facet name. Categories are for navigation and sample coverage, not for scoring.
+
 **Data files.** Uncompressed parquet, JSONL, or JSON. Compressed files (`.gz`, `.bz2`, `.xz`, `.zst`) are rejected; decompress them first (`gunzip -k`). JSONL rows are addressed by byte offset, so a file that changes during a build fails it.
 
 ## The page

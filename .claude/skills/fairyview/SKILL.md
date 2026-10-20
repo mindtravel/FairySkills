@@ -38,7 +38,9 @@ stratification) and `lang` (`en` / `zh`). Relative `path` is relative to the con
 `[source.right]` instead of a single `path`.
 
 Answers in other files: `[source.join]` with `path`, `on`, `columns`.
-Category only in the file name: `facets = ["_file"]`. Skip files: `exclude`.
+Category in the file name or a column:
+`[category]` with `from`, `pattern`, `name`, optional `groups`; `stratify`
+can use the derived name. Skip files: `exclude`.
 
 Custom shape: `kind = "./adapter.py:make_records"`, yielding `ReviewRecord`s.
 
