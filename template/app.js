@@ -20,6 +20,7 @@
       load_more: "Load {n} more", generated: "generated", source: "Source: ",
       more_files: " and {n} files in total", dropped: "dropped {n} rows ({detail})",
       no_drops: "read {n} rows, none dropped", caveats: "Read this first",
+      joined: "joined {cols} from {n} files on {on}; {miss} rows without a match",
       load_failed: "Failed to load: ",
     },
     zh: {
@@ -33,6 +34,7 @@
       load_more: "再加载 {n} 条", generated: "生成于", source: "来源：",
       more_files: " 等 {n} 个文件", dropped: "丢弃 {n} 行（{detail}）",
       no_drops: "读取 {n} 行，无丢弃", caveats: "读之前先看",
+      joined: "按 {on} 从 {n} 个文件关联 {cols}；{miss} 行无匹配",
       load_failed: "加载失败：",
     },
   };
@@ -412,6 +414,11 @@
       bits.push(t("dropped", { n: dropTotal, detail: detail }));
     } else if (CFG.rows_examined != null) {
       bits.push(t("no_drops", { n: CFG.rows_examined }));
+    }
+    if (CFG.join) {
+      bits.push(t("joined", {
+        cols: CFG.join.columns.join(", "), n: CFG.join.files.length, on: CFG.join.on, miss: CFG.join.unmatched,
+      }));
     }
     const prov = document.getElementById("provenance");
     if (prov && bits.length) {

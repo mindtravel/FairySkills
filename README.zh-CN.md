@@ -76,7 +76,7 @@ glob = "**/*.parquet"
 | `panels = [{field, label}]`、`scores`、`auto_panels`、`skip_empty` | `columns_rows` |
 | `prompt_field`、`gold_field`、`outputs_field`、`score_field`、`scoring` | `benchmark_rows`、`inference_rows` |
 | `[source.left]`、`[source.right]`、`join_field`、`reason_field`、`fields` | `paired` |
-| `id_field`、`on_drop`（`report` / `error`） | 全部 |
+| `id_field`、`on_drop`（`report` / `error`）、`exclude`、`[source.join]` | 全部 |
 
 **Mask。** 高亮通过规则配置，不需要写代码：
 
@@ -93,6 +93,23 @@ label = "reasoning"
 ```
 
 规则作用于所有面板。规则之间重叠时，排在前面的规则生效。span 是字符偏移，不是 token。
+
+**关联与文件名。** benchmark 常把参考答案放在单独的文件里，类别只体现在文件名上。这两种信息都可以直接从原始文件读取：
+
+```toml
+facets = ["_file"]                  # 虚拟列：该行所在的文件，相对于 `path`
+
+[source]
+glob = "BFCL_v4_*.json"
+exclude = ["*format_sensitivity*"]  # 从 glob 结果中排除（fnmatch 规则）
+
+[source.join]                       # 从其他原始文件左连接
+path = "data/possible_answer"
+on = "id"
+columns = ["ground_truth"]          # 默认取关联文件的所有列
+```
+
+没有匹配的行保留自己的列，在 manifest 和页面顶部计为"无匹配"，不算丢弃。关联 key 重复时 build 失败。
 
 **数据文件。** 只支持未压缩的 parquet、JSONL 和 JSON。压缩文件（`.gz`、`.bz2`、`.xz`、`.zst`）会被拒绝，需要先解压（`gunzip -k`）。JSONL 按字节偏移定位行，因此 build 过程中文件被修改会导致 build 失败。
 

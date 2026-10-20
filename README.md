@@ -76,7 +76,7 @@ glob = "**/*.parquet"
 | `panels = [{field, label}]`, `scores`, `auto_panels`, `skip_empty` | `columns_rows` |
 | `prompt_field`, `gold_field`, `outputs_field`, `score_field`, `scoring` | `benchmark_rows`, `inference_rows` |
 | `[source.left]`, `[source.right]`, `join_field`, `reason_field`, `fields` | `paired` |
-| `id_field`, `on_drop` (`report` / `error`) | all |
+| `id_field`, `on_drop` (`report` / `error`), `exclude`, `[source.join]` | all |
 
 **Masks.** Highlighting is configured as rules, not code:
 
@@ -93,6 +93,23 @@ label = "reasoning"
 ```
 
 Rules apply to every panel. When rules overlap, the earlier one wins. Spans are character offsets, not tokens.
+
+**Joins and file names.** Benchmarks often keep answers in separate files and encode the category only in the file name. Both stay in the raw files:
+
+```toml
+facets = ["_file"]                  # virtual column: the row's file, relative to `path`
+
+[source]
+glob = "BFCL_v4_*.json"
+exclude = ["*format_sensitivity*"]  # fnmatch patterns removed from the glob
+
+[source.join]                       # left join from other raw files
+path = "data/possible_answer"
+on = "id"
+columns = ["ground_truth"]          # default: every column of the joined files
+```
+
+A row without a match keeps its own columns and is counted as `unmatched` in the manifest and page header, not dropped. Duplicate join keys fail the build.
 
 **Data files.** Uncompressed parquet, JSONL, or JSON. Compressed files (`.gz`, `.bz2`, `.xz`, `.zst`) are rejected; decompress them first (`gunzip -k`). JSONL rows are addressed by byte offset, so a file that changes during a build fails it.
 

@@ -37,6 +37,9 @@ stratification) and `lang` (`en` / `zh`). Relative `path` is relative to the con
 `paired` is the one whole-source adapter: it takes `[source.left]` and
 `[source.right]` instead of a single `path`.
 
+Answers in other files: `[source.join]` with `path`, `on`, `columns`.
+Category only in the file name: `facets = ["_file"]`. Skip files: `exclude`.
+
 Custom shape: `kind = "./adapter.py:make_records"`, yielding `ReviewRecord`s.
 
 Masks are rules, not code (`fairyview/mask.py`):

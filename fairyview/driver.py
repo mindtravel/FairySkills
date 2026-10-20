@@ -127,6 +127,14 @@ def records_from_view(
          "mtime": Path(path).stat().st_mtime}
         for path in source.files
     ]
+    if source.join:
+        stats["join"] = {
+            "on": source.join.on,
+            "columns": list(source.join.columns),
+            "files": [{"path": source.join.relative(p), "bytes": Path(p).stat().st_size}
+                      for p in source.join.files],
+            "unmatched": source.join.unmatched,
+        }
     return out
 
 
@@ -143,6 +151,8 @@ def _resolve_paths(cfg: dict, base: Path) -> None:
 
     if isinstance(cfg.get("path"), str):
         cfg["path"] = resolve(cfg["path"])
+    if isinstance(cfg.get("join"), dict) and isinstance(cfg["join"].get("path"), str):
+        cfg["join"] = {**cfg["join"], "path": resolve(cfg["join"]["path"])}
     for side in ("left", "right"):
         if isinstance(cfg.get(side), dict) and isinstance(cfg[side].get("path"), str):
             cfg[side] = {**cfg[side], "path": resolve(cfg[side]["path"])}

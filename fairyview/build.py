@@ -98,6 +98,7 @@ def build(config_path: str, out_dir: str) -> Path:
         "rows_examined": stats.get("rows_examined"),
         "dropped": stats.get("dropped", {}),
         "source_files": stats.get("source_files", []),
+        "join": stats.get("join"),
         "sharded": bool(shard_files),
     }
 
@@ -117,9 +118,11 @@ def build(config_path: str, out_dir: str) -> Path:
         "rows_examined": stats.get("rows_examined"),
         "dropped": stats.get("dropped", {}),
         "source_files": stats.get("source_files", []),
+        "join": stats.get("join"),
                 "shards": shard_files,
                 "schema_version": SCHEMA_VERSION,
                 "source_files": stats.get("source_files", []),
+        "join": stats.get("join"),
                 "rows_examined": stats.get("rows_examined"),
                 "dropped": stats.get("dropped", {}),
                 "dropped_examples": stats.get("dropped_examples", []),

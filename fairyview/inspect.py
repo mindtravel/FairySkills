@@ -126,16 +126,16 @@ def inspect_source(path: str, glob: str | None = None, *, sample_rows: int = 200
     # schema alone gives no facets, and then with a projection that skips the
     # nested conversation/output columns: their names are all we need, not
     # their megabytes.
-    provisional = roles.classify(source.columns, low_cardinality=False)
+    provisional = roles.classify(source.file_columns, low_cardinality=False)
     rows: list[dict] = []
     if not provisional.facets:
-        projection = [c for c in source.columns if c not in _bulky_columns()]
+        projection = [c for c in source.file_columns if c not in _bulky_columns()]
         for row in iter_light_rows(source.files[0], projection):
             rows.append(row)
             if len(rows) >= sample_rows:
                 break
 
-    info = roles.classify(source.columns, rows)
+    info = roles.classify(source.file_columns, rows)
     kind, notes = _suggest_kind(info)
 
     if info.facets:
@@ -151,12 +151,12 @@ def inspect_source(path: str, glob: str | None = None, *, sample_rows: int = 200
         "files": len(source.files),
         "rows_in_file": _row_count(source.files),
         "rows_sampled_for_classification": len(rows),
-        "columns": [{"name": name, "role": info.role_of(name) or "unassigned"} for name in source.columns],
+        "columns": [{"name": name, "role": info.role_of(name) or "unassigned"} for name in source.file_columns],
         "suggestion": {
             "kind": kind,
             "id_field": (info.by_role(roles.ID) or [None])[0],
             "facets": info.facets,
-            "panels": _panel_fields(info, source.columns) if kind == "columns_rows" else [],
+            "panels": _panel_fields(info, source.file_columns) if kind == "columns_rows" else [],
         },
         "unassigned": info.unassigned,
         "notes": notes,
@@ -165,7 +165,7 @@ def inspect_source(path: str, glob: str | None = None, *, sample_rows: int = 200
             glob=source.glob,
             kind=kind,
             info=info,
-            columns=source.columns,
+            columns=source.file_columns,
             notes=notes,
         ),
     }
