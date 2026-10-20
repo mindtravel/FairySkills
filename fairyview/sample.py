@@ -12,10 +12,12 @@ from collections.abc import Iterable
 from typing import Any
 
 
-def reservoir(records: Iterable[Any], n: int, seed: int = 0) -> list[Any]:
+def reservoir(records: Iterable[Any], n: int, seed: int = 0, on_item=None) -> list[Any]:
     rng = random.Random(seed)
     out: list[Any] = []
     for index, item in enumerate(records):
+        if on_item:
+            on_item(item)
         if len(out) < n:
             out.append(item)
         else:
@@ -29,14 +31,24 @@ def sample_records(
     records: Iterable[Any],
     sample: dict[str, Any] | None,
     facet_key=lambda record: None,
+    on_item=None,
 ) -> list[Any]:
     """Return all records when `sample` is falsy.
 
     sample = {"n": 200, "seed": 0, "stratify": "source"}
     With `stratify`, `n` is the total budget, split evenly across strata;
     see `allocate` for small strata.
+
+    `on_item`, when given, runs once per item of the FULL stream, before the
+    keep/drop decision — the only point past which the rest of the pipeline
+    only ever sees the sample. A caller that needs population counts (e.g.
+    `[category]` coverage) must hook in here, not after this function returns.
     """
     if not sample:
+        if on_item:
+            records = list(records)
+            for record in records:
+                on_item(record)
         return list(records)
 
     n = int(sample["n"])
@@ -44,11 +56,13 @@ def sample_records(
     stratify = sample.get("stratify")
 
     if not stratify:
-        return reservoir(records, n, seed)
+        return reservoir(records, n, seed, on_item=on_item)
 
     strata: dict[Any, list[Any]] = defaultdict(list)
     order: list[Any] = []
     for record in records:
+        if on_item:
+            on_item(record)
         key = facet_key(record)
         if key not in strata:
             order.append(key)

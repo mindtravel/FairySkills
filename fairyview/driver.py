@@ -83,26 +83,37 @@ def records_from_view(
     # A derived category is a facet too: make sure both its column and the
     # facet/stratify built from it are read.
     cat = category_mod.parse(category_cfg, source.columns if category_cfg else ())
+    # `stratify` can name a real column, or the facet a `[category]` derives --
+    # the latter is not a column of any file and must not be requested from one.
+    stratify_is_derived = bool(cat) and stratify in (cat.name, cat.group_name)
     # The scan reads only cheap key columns; the full projection (often a
     # nested `messages` column) is decoded for sampled rows only. Scanning with
     # the full projection decoded every conversation of a 1M-row export.
-    scan = list(dict.fromkeys([*wanted, *([stratify] if stratify else []),
+    scan = list(dict.fromkeys([*wanted, *([stratify] if stratify and not stratify_is_derived else []),
                                *([cat.source] if cat else [])]))
     source.require(projection, owner=view.name)
     index = source.iter_index(scan, owner=view.name)
 
+    # Counts population, not sample: `sample_records` touches every item of the
+    # full stream exactly once (to stratify), which is the only point left
+    # where the full population is visible. Counting after sampling returns
+    # would silently measure the sample against itself ("rows" == "shown" for
+    # every category, always) -- that bug shipped once; `on_item` is the fix.
+    count_population = (lambda item: cat.count(cat.derive(item[1].get(cat.source)))) if cat else None
     if view.sample_cfg:
         index = sample_records(
             index,
             view.sample_cfg,
             facet_key=(
                 (lambda item: cat.derive(item[1].get(cat.source)).get(stratify))
-                if cat and stratify in (cat.name, cat.group_name)
+                if stratify_is_derived
                 else (lambda item: item[1].get(stratify))
             )
             if stratify
             else (lambda item: None),
+            on_item=count_population,
         )
+        count_population = None  # already counted during sampling; do not count twice
 
     out: list[ReviewRecord] = []
     dropped: list[tuple[str, int, str]] = []
@@ -111,8 +122,8 @@ def records_from_view(
         decoded = source.read([key for key, _ in batch], projection)
         for key, light in batch:
             stats["rows_examined"] += 1
-            if cat:
-                cat.count(cat.derive(light.get(cat.source)))
+            if count_population:
+                count_population((key, light))
             row = decoded.get(key)
             if row is None:
                 dropped.append((source.relative(key[0]), key[1], "row not decoded"))

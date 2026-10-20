@@ -159,3 +159,35 @@ pattern = "NOPE_(.*)"
 ''')),
             str(tmp_path / "out"),
         )
+
+
+def test_category_totals_are_the_population_not_the_sample(tmp_path: Path):
+    """[category] totals must reflect every row in the source, even when
+    `[sample]` keeps only a handful. Counting after sampling would make
+    `rows` == `shown` for every category, always -- the bug this pins."""
+    data = tmp_path / "data"
+    _jsonl(data / "B_simple.json", [{"id": f"s{i}", "question": f"q{i}"} for i in range(40)])
+    _jsonl(data / "B_irrelevance.json", [{"id": f"i{i}", "question": f"iq{i}"} for i in range(5)])
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'''title = "b"
+[sample]
+n = 10
+stratify = "category"
+[source]
+kind = "columns_rows"
+path = "{data}"
+glob = "B_*.json"
+id_field = "id"
+[category]
+from = "_file"
+pattern = "B_(.*)[.]json"
+''',
+        encoding="utf-8",
+    )
+    out = build(str(cfg), str(tmp_path / "out"))
+    manifest = json.loads((out / "manifest.json").read_text())
+    cats = manifest["categories"]
+    assert cats["rows"] == {"simple": 40, "irrelevance": 5}
+    assert cats["shown"]["simple"] < 40
+    assert sum(cats["shown"].values()) == 10
