@@ -72,6 +72,12 @@ class ColumnsView(View):
             top = _PATH.match(field)
             if top:
                 names.append(top.group(1))
+        for item in self._scores():
+            rf = item.get("reason_field")
+            if rf:
+                top = _PATH.match(rf)
+                if top:
+                    names.append(top.group(1))
         return names
 
     def render(self, row: dict) -> Rendered | None:
@@ -91,12 +97,20 @@ class ColumnsView(View):
             value = resolve_path(row, item["field"])
             if value is None:
                 continue
+            # reason_field: a per-row column (e.g. an AI reviewer's written comment); reason: a fixed string
+            # for every row. reason_field wins when both are set and the row's value isn't empty.
+            reason = item.get("reason")
+            if item.get("reason_field"):
+                per_row = resolve_path(row, item["reason_field"])
+                if per_row:
+                    reason = as_text(per_row)
             scores.append(
                 Score(
                     model=item.get("model", item["field"]),
                     value=value if isinstance(value, (int, float, str)) else as_text(value),
                     scale=item.get("scale", "0-1"),
-                    reason=item.get("reason"),
+                    reason=reason,
+                    comparable=bool(item.get("comparable", True)),
                 )
             )
         return Rendered(panels=panels, scores=scores)

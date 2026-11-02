@@ -229,4 +229,9 @@ def build_records(config: dict, config_path: Path, stats: dict | None = None) ->
     records = adapter.records(cfg, sample_cfg, stats)
     if stats.get("records") is None:
         stats["records"] = len(records)
+    # after sampling: only the records the page shows are sent to the model (and paid for)
+    if config.get("annotate"):
+        from fairyview import annotate
+
+        records, stats["annotate"] = annotate.wrap(records, config["annotate"], config_path.parent)
     return [record.to_dict() for record in records]

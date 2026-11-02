@@ -1,0 +1,43 @@
+% Shared beamer preamble for all IFairy decks (midtrain, sft, benchmark, ...).
+% Each deck's own style.tex is just `\input{../../shared/slides_style.tex}`; deck-specific
+% identity is the one override point below (\DeckKicker), set via \renewcommand after \input.
+\documentclass[aspectratio=169,10pt]{beamer}
+\usepackage[UTF8,fontset=none]{ctex}
+\setCJKmainfont{Noto Sans CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\usepackage{amsmath,amssymb,booktabs,array,tabularx}
+\usepackage{tikz,colortbl}
+\usetikzlibrary{positioning,arrows.meta}
+\usefonttheme{professionalfonts}
+\definecolor{ink}{HTML}{17253B}
+\definecolor{teal}{HTML}{315FB4}
+\definecolor{pale}{HTML}{EFF3FA}
+\definecolor{muted}{HTML}{69788D}
+\definecolor{gold}{HTML}{CA9C53}
+\arrayrulecolor{teal!35}
+\newcommand{\DeckKicker}{} % per deck: \renewcommand{\DeckKicker}{Midtrain / 数据视角}
+\newcommand{\sect}[1]{\gdef\DeckKicker{#1}} % per frame, for decks whose kicker changes by section
+\setbeamertemplate{background}{\begin{tikzpicture}[remember picture,overlay]
+\fill[teal] (current page.north west) rectangle ([xshift=2mm]current page.south west);
+\fill[gold] ([yshift=-8mm]current page.north west) rectangle ([xshift=2mm,yshift=-18mm]current page.north west);
+\end{tikzpicture}}
+\setbeamercolor{normal text}{fg=ink,bg=white}
+\setbeamercolor{structure}{fg=teal}
+\setbeamercolor{frametitle}{fg=ink}
+\setbeamerfont{frametitle}{size=\fontsize{11}{14},series=\bfseries}
+\setbeamertemplate{frametitle}{\vspace{0.8mm}{\fontsize{5.5}{7}\selectfont\color{muted}\DeckKicker\par}\vspace{0.4mm}\insertframetitle\par\vspace{1mm}}
+\setbeamerfont{normal text}{size=\fontsize{8}{11.5}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\framesource}{}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{\hspace{6mm}\begin{minipage}[b]{.88\paperwidth}\fontsize{5}{6.2}\selectfont\color{gray}\framesource\end{minipage}\hfill{\color{teal}\scriptsize\insertframenumber}\hspace{6mm}\vspace{3mm}}
+\setbeamersize{text margin left=6mm,text margin right=6mm}
+\setbeamertemplate{itemize items}[circle]
+\setlength{\parskip}{3pt}
+\newcommand{\source}[1]{\gdef\framesource{#1}}
+\newcommand{\point}[1]{{\color{teal}\bfseries #1}}
+\newcommand{\takeaway}[1]{\par\vspace{2mm}\begingroup\setlength{\fboxsep}{1.8mm}\colorbox{pale}{\parbox{\dimexpr\textwidth-5mm\relax}{\fontsize{7.5}{10.5}\selectfont\color{teal}#1}}\par\endgroup}
+\makeatletter\newcommand{\rowsinput}[1]{\@@input #1 }\makeatother % primitive, expandable: generated rows may start with \toprule
+\newcommand{\tablefont}{\fontsize{6.2}{7.6}\selectfont\renewcommand{\arraystretch}{1.03}\setlength{\tabcolsep}{2.6pt}}
+\tikzset{stage/.style={draw=teal,fill=pale,rounded corners=1.5pt,minimum width=14mm,minimum height=7mm,inner sep=2pt,align=center,font=\fontsize{8}{10}\selectfont},
+         arr/.style={-{Stealth[length=2mm]},teal,thick}}

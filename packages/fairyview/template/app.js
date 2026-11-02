@@ -12,42 +12,66 @@
     en: {
       search: "Search", search_hint: "id / text", view: "View", cards: "Cards", table: "Table",
       layout: "Panel layout", side_by_side: "Side by side", stacked: "Stacked", toggle: "Toggle",
-      blind_on: "Hide scores, read text first", blind_off: "Show scores",
+      blind_on: "Hide scores and AI notes, read text first", blind_off: "Show scores",
       storage_note: "Decisions are kept in this browser's localStorage; export them as JSONL below.",
       export: "Export decisions.jsonl", clear: "Clear decisions on this page",
       chars: "chars", decision: "Decision", keep: "Keep", drop: "Drop", unsure: "Unsure",
       marked: "Marked: ", all: "All", records: "records", shown: "showing {n}",
-      load_more: "Load {n} more", generated: "generated", source: "Source: ",
+      generated: "generated", source: "Source: ",
       more_files: " and {n} files in total", dropped: "dropped {n} rows ({detail})",
       no_drops: "read {n} rows, none dropped", caveats: "Read this first",
       categories: "Categories", cat_shown: "{n} of {total}", groups: "Groups",
       cat_short: "{cats} categories, {shown} of {total} rows shown",
       joined: "joined {cols} from {n} files on {on}; {miss} rows without a match",
       load_failed: "Failed to load: ",
+      notes: "Highlights ({n}) — click to jump",
+      issues: "AI findings ({n}) — click an excerpt to jump to it",
+      history: "Resolved later ({n}) — kept for audit, not counted as a hard error",
+      task_full: "Task (requirements cited by the findings are highlighted)",
+      req: "Task requirement", env: "Environment / log evidence", beh: "Model behavior",
+      prev: "Prev", next: "Next", jump: "Global #", progress: "#{seq} / {total} · filtered {pos} / {shown}",
     },
     zh: {
       search: "搜索", search_hint: "id / 文本内容", view: "视图", cards: "卡片", table: "表格",
       layout: "面板布局", side_by_side: "并排", stacked: "上下", toggle: "切换",
-      blind_on: "隐藏分数，先看文本", blind_off: "显示分数",
+      blind_on: "隐藏分数和 AI 标注，先看文本", blind_off: "显示分数",
       storage_note: "决策保存在浏览器 localStorage；可用下方按钮导出 JSONL。",
       export: "导出 decisions.jsonl", clear: "清除本页决策",
       chars: "字符", decision: "决策", keep: "保留", drop: "剔除", unsure: "存疑",
       marked: "已标记：", all: "全部", records: "条", shown: "已显示 {n}",
-      load_more: "再加载 {n} 条", generated: "生成于", source: "来源：",
+      generated: "生成于", source: "来源：",
       more_files: " 等 {n} 个文件", dropped: "丢弃 {n} 行（{detail}）",
       no_drops: "读取 {n} 行，无丢弃", caveats: "读之前先看",
       categories: "分类", cat_shown: "{n} / {total}", groups: "分组",
       cat_short: "{cats} 个分类，显示 {shown} / {total} 行",
       joined: "按 {on} 从 {n} 个文件关联 {cols}；{miss} 行无匹配",
       load_failed: "加载失败：",
+      notes: "高亮标注（{n} 处）· 点击跳转到原文",
+      issues: "AI 发现的问题（{n} 个）· 点击原文片段跳转",
+      history: "已修复的历史问题（{n} 个）· 不计入硬性错误",
+      task_full: "题目原文（被违背的要求已标出）",
+      req: "题目要求", env: "环境 / 日志依据", beh: "模型行为",
+      prev: "上一页", next: "下一页", jump: "全局序号", progress: "#{seq} / {total} · 筛选内 {pos} / {shown}",
     },
   };
+
+  const CONTROL_DEFAULTS = CFG.default_controls || {};
 
   function pickLang() {
     const saved = localStorage.getItem(LANG_KEY);
     if (saved && I18N[saved]) return saved;
+    if (CONTROL_DEFAULTS.lang && I18N[CONTROL_DEFAULTS.lang]) return CONTROL_DEFAULTS.lang;
     if (CFG.lang && I18N[CFG.lang]) return CFG.lang;
     return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+  }
+
+  function facetDefaults() {
+    const names = new Set(CFG.facets || []);
+    const values = {};
+    for (const [name, value] of Object.entries(CONTROL_DEFAULTS)) {
+      if (names.has(name) && value !== "" && value != null) values[name] = String(value);
+    }
+    return values;
   }
 
   let lang = pickLang();
@@ -70,14 +94,13 @@
   const state = {
     records: [],
     filtered: [],
-    search: "",
-    facetValues: {},
-    view: "cards",
-    layout: CFG.panel_layout || "side_by_side",
+    search: CONTROL_DEFAULTS.search || "",
+    facetValues: facetDefaults(),
+    view: CONTROL_DEFAULTS.view || "cards",
+    layout: CONTROL_DEFAULTS.layout || CFG.panel_layout || "side_by_side",
     blind: Boolean(CFG.blinded_default),
     decisions: loadDecisions(),
-    pageSize: Number(CFG.page_size || 100),
-    shown: 0,
+    cursor: 0,
   };
 
   function esc(text) {
@@ -132,21 +155,129 @@
 
   /* ---------- span rendering ---------- */
 
-  function renderText(panel) {
+  // The spans a panel actually draws, in text order, with the part each one shows (overlaps are trimmed).
+  // renderText and the per-record note list both use it, so note n always points at mark n.
+  function visibleSpans(panel) {
     const text = panel.text || "";
-    const spans = (panel.spans || []).slice().sort((a, b) => a.start - b.start || b.end - a.end);
+    const out = [];
+    if (!(panel.spans || []).length) return out;
+    // Python spans use Unicode code points; JS slice uses UTF-16 code units.
+    let offsets = null;
+    if (/[\uD800-\uDBFF]/.test(text)) {
+      offsets = [0];
+      for (const char of text) offsets.push(offsets[offsets.length - 1] + char.length);
+    }
+    const unitOffset = (n) => offsets ? offsets[Math.min(n, offsets.length - 1)] : n;
+    let cursor = 0;
+    for (const span of (panel.spans || []).slice().sort((a, b) => a.start - b.start || b.end - a.end)) {
+      const start = Math.max(unitOffset(span.start), cursor);
+      const end = Math.min(unitOffset(span.end), text.length);
+      if (end <= start) continue;
+      out.push({ span, start, end });
+      cursor = end;
+    }
+    return out;
+  }
+
+  // Numbered marks: a span with a note (one AI finding cited in several places) is numbered by its note and
+  // addressed as data-mark="<note>-<kind>"; a labelled span without a note gets its own running number.
+  // inNotes renders a copy (the full task in the findings box) without data-mark, so jumps land in the panels.
+  function renderText(panel, counter, inNotes) {
+    const text = panel.text || "";
     let html = "";
     let cursor = 0;
-    for (const span of spans) {
-      const start = Math.max(span.start, cursor);
-      const end = Math.min(span.end, text.length);
-      if (end <= start) continue;
+    for (const { span, start, end } of visibleSpans(panel)) {
       html += esc(text.slice(cursor, start));
       const label = span.label ? ' title="' + esc(span.label) + '"' : "";
-      html += '<mark class="k-' + esc(span.kind) + '"' + label + ">" + esc(text.slice(start, end)) + "</mark>";
+      let num = "", key = "";
+      if (span.note) { num = span.note; key = span.note + "-" + span.kind; }
+      else if (span.label) { num = String(++counter.n); key = "x" + num; }
+      const tag = num ? '<sup class="mark-num">' + esc(num) + "</sup>" : "";
+      const statusClass = span.status === "resolved_later" ? " k-history" : "";
+      html += '<mark class="k-' + esc(span.kind) + statusClass + '"' + label + (key && !inNotes ? ' data-mark="' + esc(key) + '"' : "") + ">" +
+        tag + esc(text.slice(start, end)) + "</mark>";
       cursor = end;
     }
     html += esc(text.slice(cursor));
+    return html;
+  }
+
+  function snippetOf(text, start, end) {
+    const s = text.slice(start, end);
+    return s.length > 240 ? s.slice(0, 240) + "…" : s;
+  }
+
+  function renderNotes(record) {
+    const panels = record.panels || [];
+    const groups = new Map();
+    for (const finding of record.findings || []) {
+      groups.set(finding.note, { reason: finding.label, links: [], status: finding.status || "confirmed",
+        locations: finding.locations || [] });
+    }
+    panels.forEach((p) => {
+      for (const { span, start, end } of visibleSpans(p)) {
+        if (!span.note) continue;
+        if (!groups.has(span.note)) groups.set(span.note, { reason: "", links: [], status: "confirmed" });
+        const g = groups.get(span.note);
+        if (span.status === "resolved_later") g.status = "resolved_later";
+        if (span.label && !g.reason) g.reason = span.label;
+        g.links.push({ kind: span.kind, text: snippetOf(p.text || "", start, end), panel: p.label });
+      }
+    });
+
+    const order = { match: 0, evidence: 1, warning: 2 };
+    const names = { match: t("req"), evidence: t("env"), warning: t("beh") };
+    function renderGroupItems(entries) {
+      return entries.map(([note, g]) => {
+        const links = g.links.slice().sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9)).map((l) =>
+          l.kind === "match"
+            ? '<div class="link k-' + esc(l.kind) + '"><span class="link-kind">' + esc(names[l.kind]) + "</span>「" + esc(l.text) + "」</div>"
+            : '<button type="button" class="link k-' + esc(l.kind) + '" data-jump="' + esc(note + "-" + l.kind) + '">' +
+              '<span class="link-kind">' + esc(names[l.kind] || l.kind) + '</span><span class="note-where">' + esc(l.panel) + "</span>" +
+              '<span class="note-snippet">' + esc(l.text) + "</span></button>").join("");
+        return '<li class="issue' + (g.status === "resolved_later" ? " issue-history" : "") + '"><div class="issue-head"><span class="note-num">' + esc(note) + "</span>" +
+          '<span class="note-label">' + esc(g.reason) + "</span></div>" +
+          (g.locations || []).map((location) => '<div class="note-where">' + esc(location) + '</div>').join("") +
+          links + "</li>";
+      });
+    }
+    function statusEntries(status) {
+      return [...groups.entries()].filter(([, g]) => g.status === status);
+    }
+
+    let html = "";
+    const active = statusEntries("confirmed");
+    if (active.length) {
+      const taskPanels = panels.filter((p) => (p.spans || []).some((sp) => sp.note && sp.kind === "match"));
+      const task = taskPanels.map((p) =>
+        '<div class="task-full"><div class="task-head">' + esc(t("task_full")) + " · " + esc(p.label) + "</div><pre>" +
+        renderText(p, { n: 0 }, true) + "</pre></div>").join("");
+      html += '<details class="notes" open><summary>' + esc(t("issues", { n: active.length })) + "</summary>" +
+        "<ol>" + renderGroupItems(active).join("") + "</ol>" + task + "</details>";
+    }
+    const history = statusEntries("resolved_later");
+    if (history.length) {
+      html += '<details class="notes history"><summary>' + esc(t("history", { n: history.length })) + "</summary>" +
+        "<ol>" + renderGroupItems(history).join("") + "</ol></details>";
+    }
+
+    const items = [];
+    let n = 0;
+    for (const p of panels) {
+      const text = p.text || "";
+      for (const { span, start, end } of visibleSpans(p)) {
+        if (span.note || !span.label) continue;
+        n += 1;
+        items.push(
+          '<li><button type="button" class="note k-' + esc(span.kind) + '" data-jump="x' + n + '">' +
+          '<span class="note-num">' + n + "</span>" +
+          '<span class="note-label">' + esc(span.label) + "</span>" +
+          '<span class="note-where">' + esc(p.label) + "</span>" +
+          '<span class="note-snippet">' + esc(snippetOf(text, start, end)) + "</span></button></li>");
+      }
+    }
+    if (items.length) html += '<details class="notes" open><summary>' + esc(t("notes", { n: items.length })) + "</summary><ol>" +
+      items.join("") + "</ol></details>";
     return html;
   }
 
@@ -194,15 +325,25 @@
             .join("") +
           "</div>"
         : "";
-    const panels = record.panels
-      .map(
-        (p, i) =>
-          '<div class="panel" data-panel="' + i + '"' + (state.layout === "toggle" && i > 0 ? " hidden" : "") + ">" +
-          '<h4><span>' + esc(p.label) + "</span><span>" + (p.text || "").length.toLocaleString() + " " + t("chars") + "</span></h4>" +
-          "<pre>" + renderText(p) + "</pre></div>"
-      )
-      .join("");
-    return tabs + '<div class="panels ' + esc(state.layout) + '">' + panels + "</div>";
+    const counter = { n: 0 };
+    const groups = new Map();
+    record.panels.forEach((p, i) => {
+      const key = p.group || "panel-" + i;
+      if (!groups.has(key)) groups.set(key, { label: p.group_label, collapsed: p.group_collapsed, panels: [] });
+      const heading = '<span>' + esc(p.label) + '</span><span>' +
+        (p.text || "").length.toLocaleString() + " " + t("chars") + '</span>';
+      const content = '<pre>' + renderText(p, counter) + '</pre>';
+      const body = p.group
+        ? '<details' + (p.collapsed ? '' : ' open') + '><summary>' + heading + '</summary>' + content + '</details>'
+        : '<h4>' + heading + '</h4>' + content;
+      groups.get(key).panels.push('<div class="panel" data-role="' + esc(p.role) + '" data-panel="' + i + '"' +
+        (state.layout === "toggle" && i > 0 ? " hidden" : "") + '>' + body + '</div>');
+    });
+    const html = [...groups.values()].map((g) => g.label
+      ? '<details class="message-group"' + (g.collapsed ? '' : ' open') + '><summary>' + esc(g.label) +
+        '</summary>' + g.panels.join('') + '</details>'
+      : g.panels.join('')).join('');
+    return tabs + '<div class="panels ' + esc(state.layout) + '">' + html + '</div>';
   }
 
   function renderDecision(record) {
@@ -221,11 +362,13 @@
     const badges = Object.entries(record.facets || {})
       .map(([k, v]) => '<span class="badge">' + esc(k) + "=" + esc(v) + "</span>")
       .join("");
+    const notes = renderNotes(record);
     return (
-      '<article class="record" id="rec-' + esc(record.id) + '" data-id="' + esc(record.id) + '">' +
-      '<div class="record-head"><h3>' + esc(record.id) + '</h3><div class="badges">' + badges + "</div></div>" +
+      '<article class="record' + (notes ? " has-notes" : "") + '" id="rec-' + esc(record.id) + '" data-id="' + esc(record.id) + '">' +
+      '<div class="record-head"><h3><span class="seq">#' + esc(record._seq) + '</span> · ' + esc(record.id) + '</h3><div class="badges">' + badges + "</div></div>" +
       renderFields(record) +
       renderScores(record) +
+      notes +
       renderPanels(record) +
       renderDecision(record) +
       "</article>"
@@ -250,13 +393,24 @@
 
   /* ---------- filtering ---------- */
 
+  const FACET_LABELS = {
+    visual_class: "视觉类型", source: "来源", tier: "筛选档", warning: "完整性警告",
+    rules: "规则版本", model_purity: "模型纯度", lang: "语言",
+    ai_verdict: "AI 结论", ai_patterns: "错误类型", ai_severity: "严重度", ai_confidence: "置信度",
+    text_only_safe: "纯文本安全",
+  };
+
   function matches(record) {
     if (state.search) {
       const hay = (record.id + " " + (record.panels || []).map((p) => p.text).join(" ")).toLowerCase();
       if (!hay.includes(state.search)) return false;
     }
     for (const [name, value] of Object.entries(state.facetValues)) {
-      if (value && String(record.facets ? record.facets[name] : "") !== value) return false;
+      if (!value) continue;
+      const raw = String(record.facets ? record.facets[name] : "");
+      if (name === "ai_patterns") {
+        if (!raw.split(/\s+/).includes(value)) return false;
+      } else if (raw !== value) return false;
     }
     return true;
   }
@@ -267,7 +421,14 @@
       const seen = new Set();
       for (const record of state.records) {
         const v = record.facets ? record.facets[name] : undefined;
-        if (v !== undefined && v !== null) seen.add(String(v));
+        if (v === undefined || v === null) continue;
+        if (name === "ai_patterns") {
+          for (const token of String(v).split(/\s+/)) {
+            if (token && token !== "not" && token !== "annotated") seen.add(token);
+          }
+        } else {
+          seen.add(String(v));
+        }
       }
       values[name] = Array.from(seen).sort();
     }
@@ -284,7 +445,7 @@
         const opts = ['<option value="">' + t("all") + "</option>"]
           .concat(list.map((v) => '<option value="' + esc(v) + '">' + esc(v) + "</option>"))
           .join("");
-        return '<label class="small">' + esc(name) + ' <select data-facet="' + esc(name) + '">' + opts + "</select></label>";
+        return '<label class="small">' + esc(FACET_LABELS[name] || name) + ' <select data-facet="' + esc(name) + '">' + opts + "</select></label>";
       })
       .join("");
     host.querySelectorAll("select[data-facet]").forEach((sel) => {
@@ -299,28 +460,64 @@
   /* ---------- render ---------- */
 
   function render(reset) {
-    if (reset) state.shown = state.pageSize;
-    if (!state.shown) state.shown = state.pageSize;
     state.filtered = state.records.filter(matches);
+    if (reset) state.cursor = 0;
+    if (state.cursor >= state.filtered.length) state.cursor = Math.max(0, state.filtered.length - 1);
+    const current = state.filtered[state.cursor];
     const host = document.getElementById("records");
-    const visible = state.filtered.slice(0, state.shown);
-    host.innerHTML =
-      state.view === "table" ? renderTable(visible) : visible.map(renderCard).join("");
-    const count = document.getElementById("count");
-    if (count) {
-      const more = state.filtered.length > visible.length ? " (" + t("shown", { n: visible.length }) + ")" : "";
-      count.textContent = state.filtered.length + " / " + state.records.length + " " + t("records") + more;
-    }
-    const moreBtn = document.getElementById("more");
-    if (moreBtn) {
-      moreBtn.hidden = state.filtered.length <= visible.length;
-      moreBtn.textContent = t("load_more", { n: Math.min(state.pageSize, state.filtered.length - visible.length) });
-    }
+    host.innerHTML = current ? (state.view === "table" ? renderTable([current]) : renderCard(current)) : "";
+    updatePager(current);
     document.body.classList.toggle("blind", state.blind);
+  }
+
+  function updatePager(current) {
+    const count = document.getElementById("count");
+    if (count) count.textContent = state.filtered.length + " / " + state.records.length + " " + t("records");
+    const progress = document.getElementById("progress");
+    const bar = document.getElementById("progressbar");
+    const seqInput = document.getElementById("seq");
+    const prev = document.getElementById("prev");
+    const next = document.getElementById("next");
+    const total = state.records.length;
+    if (current) {
+      if (seqInput) { seqInput.max = String(total); seqInput.value = String(current._seq); }
+      if (progress) progress.textContent = t("progress", { seq: current._seq, total, pos: state.cursor + 1, shown: state.filtered.length });
+      if (bar) bar.style.width = (100 * (state.cursor + 1) / Math.max(1, state.filtered.length)) + "%";
+    } else {
+      if (progress) progress.textContent = "0 / " + total;
+      if (bar) bar.style.width = "0%";
+    }
+    if (prev) prev.disabled = state.cursor <= 0;
+    if (next) next.disabled = state.cursor >= state.filtered.length - 1;
+  }
+
+  function scrollToRecord() {
+    const el = document.getElementById("records");
+    if (el) window.scrollTo(0, Math.max(0, el.offsetTop - 8));
+  }
+
+  function jumpToSeq(value) {
+    const n = Number(value);
+    const rec = state.records.find((r) => r._seq === n);
+    if (!rec) return;
+    let pos = state.filtered.indexOf(rec);
+    if (pos < 0) {
+      state.search = "";
+      state.facetValues = {};
+      const search = document.getElementById("search");
+      if (search) search.value = "";
+      renderFacetControls();
+      state.filtered = state.records.slice();
+      pos = state.filtered.indexOf(rec);
+    }
+    state.cursor = Math.max(0, pos);
+    render();
+    scrollToRecord();
   }
 
   function bindControls() {
     const search = document.getElementById("search");
+    if (search) search.value = state.search;
     let searchTimer = null;
     search.addEventListener("input", () => {
       clearTimeout(searchTimer);
@@ -367,6 +564,27 @@
         if (id) setDecision(id, decide.dataset.decide);
         return;
       }
+      const jump = event.target.closest("[data-jump]");
+      if (jump) {
+        const article = jump.closest("article");
+        const mark = article && article.querySelector('mark[data-mark="' + jump.dataset.jump + '"]');
+        if (mark) {
+          for (let parent = mark.parentElement; parent; parent = parent.parentElement) {
+            if (parent.tagName === "DETAILS") parent.open = true;
+          }
+          const panel = mark.closest(".panel");
+          if (panel && panel.hidden) {  // toggle layout: show the panel that holds the mark
+            article.querySelectorAll(".panel").forEach((p) => { p.hidden = p !== panel; });
+          }
+          const pre = mark.closest("pre");
+          if (pre) pre.scrollTop += mark.getBoundingClientRect().top - pre.getBoundingClientRect().top - pre.clientHeight / 3;
+          mark.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          mark.classList.remove("flash");
+          void mark.offsetWidth;  // restart the animation on repeated clicks
+          mark.classList.add("flash");
+        }
+        return;
+      }
       const toggle = event.target.closest("[data-toggle]");
       if (toggle) {
         const index = Number(toggle.dataset.toggle);
@@ -376,8 +594,21 @@
         });
       }
     });
-    const more = document.getElementById("more");
-    if (more) more.addEventListener("click", () => { state.shown += state.pageSize; render(); });
+    const prev = document.getElementById("prev");
+    if (prev) prev.addEventListener("click", () => {
+      if (state.cursor > 0) { state.cursor -= 1; render(); scrollToRecord(); }
+    });
+    const next = document.getElementById("next");
+    if (next) next.addEventListener("click", () => {
+      if (state.cursor < state.filtered.length - 1) { state.cursor += 1; render(); scrollToRecord(); }
+    });
+    const seqInput = document.getElementById("seq");
+    if (seqInput) {
+      seqInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); jumpToSeq(seqInput.value); }
+      });
+      seqInput.addEventListener("change", () => jumpToSeq(seqInput.value));
+    }
     document.getElementById("export").addEventListener("click", () => {
       const lines = Object.entries(state.decisions).map(([id, decision]) =>
         JSON.stringify({ id, decision, config_hash: CFG.config_hash })
@@ -470,6 +701,7 @@
 
   loadRecords()
     .then((records) => {
+      records.forEach((r, i) => { r._seq = i + 1; });
       state.records = records;
       applyStaticText();
       renderHeader();

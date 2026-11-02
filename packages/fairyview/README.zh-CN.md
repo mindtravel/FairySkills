@@ -63,7 +63,7 @@ path = "data/gsm8k"          # 相对于这个配置文件
 glob = "**/*.parquet"
 ```
 
-**页面。** `panel_layout`（`side_by_side` / `stacked` / `toggle`），`blinded_default`（默认隐藏分数，读者点击后才显示），`max_inline_records`（超过这个数量就分片），`page_size`（每次"加载更多"渲染的卡片数，默认 100）。
+**页面。** `panel_layout`（`side_by_side` / `stacked` / `toggle`），`blinded_default`（默认隐藏分数，读者点击后才显示），`max_inline_records`（超过这个数量就分片）。
 
 **抽样。** 对流式索引做蓄水池抽样，`seed` 相同时结果相同。设置 `stratify` 后，名额在各层之间平均分配；某层的行数少于配额时整层收录，剩余名额再分给其他层。因此 `n` 大于等于总行数时会收录全部数据。
 
@@ -177,3 +177,16 @@ pytest -q
 代码结构和贡献规则见 [CONTRIBUTING.md](CONTRIBUTING.md)，给编程 agent 的说明见 [AGENTS.md](AGENTS.md)，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 Apache-2.0。
+
+### 无 span 的问题卡（schema v2）
+
+`ReviewRecord.findings` 支持 `Finding(note, label, status, locations)`。空或加密
+thinking 等问题可以没有 span；相同 `note` 的 span 会关联到该卡。
+`resolved_later` 卡仍折叠在历史问题中。`locations` 是纯文本，不是 HTML。
+Span 下标仍按原文的 Unicode 字符计数，由浏览器转换成 UTF-16 下标。
+
+### 消息分组（schema v3）
+
+Panel 可声明 `group`、`group_label`、`collapsed`、`group_collapsed`。
+渲染器将字段分组，但不修改原文或 span 下标。点击证据自动展开上级折叠区。
+工具调用和结果的关联由 source adapter 提供，通用渲染器不自行推断。

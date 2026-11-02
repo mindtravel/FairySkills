@@ -39,3 +39,13 @@ Initial release.
 - CLI: `build`, `try`, `dump`, `init`, `presets`, `adapters`, `describe`.
 - Six presets: `dataset-chat`, `dataset-text`, `cleaning-paired`, `benchmark`,
   `inference`, `contamination`.
+
+## Schema v2 — full-session review findings
+
+- Add span-free finding cards while retaining span-based adapters.
+- Convert Unicode code-point offsets to UTF-16 when rendering highlights.
+
+## Schema v3 — message groups
+
+- Group panels by source-defined messages, with field/group disclosure states.
+- Open collapsed ancestors when jumping to evidence; retain original text and offsets.

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fairyppt"
+version = "0.1.0"
+description = "Data-driven beamer decks: generators turn experiment artefacts into frames; one command rebuilds the PDF."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = ["openpyxl", "pymupdf", "pillow"]
+
+[project.scripts]
+fairyppt = "fairyppt.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fairyppt"]

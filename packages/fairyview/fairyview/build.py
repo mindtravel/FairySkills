@@ -45,6 +45,10 @@ def _page_facets(config: dict) -> list[str]:
     """Facets the page offers. A derived category is one, but it is not a column
     of the files, so it never enters the read projection."""
     facets = list(config.get("facets") or [])
+    if config.get("annotate"):  # set by fairyview.annotate, not source columns
+        from fairyview.annotate import facet_names
+
+        facets += [n for n in facet_names(config["annotate"]) if n not in facets]
     category = config.get("category") or {}
     if not category:
         return facets
@@ -99,9 +103,9 @@ def build(config_path: str, out_dir: str) -> Path:
         "description": config.get("description", ""),
         "caveats": config.get("caveats", []),
         "facets": _page_facets(config),
+        "default_controls": config.get("default_controls", {}),
         "panel_layout": config.get("panel_layout", "side_by_side"),
         "lang": config.get("lang"),
-        "page_size": int(config.get("page_size", 100)),
         "blinded_default": bool(config.get("blinded_default", False)),
         "config_hash": config_hash(config),
         "data_key": config.get("data_key") or config.get("title", "data review"),
@@ -113,6 +117,7 @@ def build(config_path: str, out_dir: str) -> Path:
         "source_files": stats.get("source_files", []),
         "join": stats.get("join"),
         "categories": stats.get("categories"),
+        "annotate": stats.get("annotate"),
         "sharded": bool(shard_files),
     }
 
@@ -134,6 +139,7 @@ def build(config_path: str, out_dir: str) -> Path:
         "source_files": stats.get("source_files", []),
         "join": stats.get("join"),
         "categories": stats.get("categories"),
+                "annotate": stats.get("annotate"),
                 "shards": shard_files,
                 "schema_version": SCHEMA_VERSION,
                 "source_files": stats.get("source_files", []),

@@ -41,10 +41,19 @@
     </label>
     <button id="blind" type="button"></button>
     <span id="count" class="small"></span>
+  <div class="pager" id="pager">
+    <button id="prev" type="button" data-i18n="prev">上一页</button>
+    <label class="small"><span data-i18n="jump">全局序号</span>
+      <input id="seq" type="number" min="1" step="1" inputmode="numeric">
+    </label>
+    <button id="next" type="button" data-i18n="next">下一页</button>
+    <span id="progress" class="small"></span>
+    <span class="progress-track"><i id="progressbar"></i></span>
+  </div>
   </div>
 
+
   <section id="records"></section>
-  <p style="text-align:center"><button id="more" type="button" hidden></button></p>
 
   <footer>
     <p class="small">

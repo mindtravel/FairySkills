@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from fairyview.schema import Panel, Span
 
-SPAN_KINDS = {"loss", "prompt", "match", "truncated", "warning", "custom"}
+SPAN_KINDS = {"loss", "prompt", "match", "truncated", "warning", "evidence", "custom"}
 DEFAULT_LOSS_ROLES = ("assistant", "gpt", "model")
 DEFAULT_PROMPT_ROLES = ("user", "human", "system", "developer", "tool")
 
@@ -120,8 +120,9 @@ def finalize_panels(panels, mask_cfg: dict | None):
             start = len(text) - len(
                 f"\n… [truncated: showing {limit} of {original_len} characters]"
             )
-            spans.append(Span(start, len(text), "truncated", f"of {original_len} chars"))
+            spans.append(Span(start, len(text), "truncated", f"网页显示截断：原文 {original_len} 字符"))
         spans.extend(apply_rules(text, rules))
         spans.sort(key=lambda s: (s.start, s.end))
-        out.append(Panel(role=panel.role, label=panel.label, text=text, spans=spans))
+        out.append(Panel(role=panel.role, label=panel.label, text=text, spans=spans, group=panel.group,
+                         group_label=panel.group_label, collapsed=panel.collapsed, group_collapsed=panel.group_collapsed))
     return out
