@@ -50,6 +50,8 @@ class Panel:
     group_label: str | None = None
     collapsed: bool = False
     group_collapsed: bool = False
+    group_path: list[str] | None = None
+    group_labels: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,6 +61,7 @@ class Panel:
             "spans": [s.to_dict() for s in self.spans],
             "group": self.group, "group_label": self.group_label,
             "collapsed": self.collapsed, "group_collapsed": self.group_collapsed,
+            "group_path": self.group_path, "group_labels": self.group_labels,
         }
 
 

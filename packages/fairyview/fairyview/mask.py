@@ -124,5 +124,7 @@ def finalize_panels(panels, mask_cfg: dict | None):
         spans.extend(apply_rules(text, rules))
         spans.sort(key=lambda s: (s.start, s.end))
         out.append(Panel(role=panel.role, label=panel.label, text=text, spans=spans, group=panel.group,
-                         group_label=panel.group_label, collapsed=panel.collapsed, group_collapsed=panel.group_collapsed))
+                         group_label=panel.group_label, collapsed=panel.collapsed,
+                         group_collapsed=panel.group_collapsed, group_path=panel.group_path,
+                         group_labels=panel.group_labels))
     return out

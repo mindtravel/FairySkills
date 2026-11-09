@@ -326,24 +326,49 @@
           "</div>"
         : "";
     const counter = { n: 0 };
-    const groups = new Map();
+    const root = { label: "", collapsed: false, children: new Map(), panels: [] };
+
+    function pathOf(panel, index) {
+      if (Array.isArray(panel.group_path) && panel.group_path.length) return panel.group_path;
+      if (panel.group) return [panel.group];
+      return [];
+    }
+
     record.panels.forEach((p, i) => {
-      const key = p.group || "panel-" + i;
-      if (!groups.has(key)) groups.set(key, { label: p.group_label, collapsed: p.group_collapsed, panels: [] });
+      const path = pathOf(p, i);
+      let node = root;
+      path.forEach((key, depth) => {
+        if (!node.children.has(key)) {
+          const label = (Array.isArray(p.group_labels) && p.group_labels[depth])
+            ? p.group_labels[depth]
+            : (depth === 0 ? p.group_label : key);
+          node.children.set(key, { label: label || key, collapsed: depth === 0 ? Boolean(p.group_collapsed) : false,
+                                   children: new Map(), panels: [] });
+        }
+        node = node.children.get(key);
+      });
       const heading = '<span>' + esc(p.label) + '</span><span>' +
         (p.text || "").length.toLocaleString() + " " + t("chars") + '</span>';
       const content = '<pre>' + renderText(p, counter) + '</pre>';
-      const body = p.group
+      const collapsible = Boolean(p.group || p.collapsed);
+      const body = collapsible
         ? '<details' + (p.collapsed ? '' : ' open') + '><summary>' + heading + '</summary>' + content + '</details>'
         : '<h4>' + heading + '</h4>' + content;
-      groups.get(key).panels.push('<div class="panel" data-role="' + esc(p.role) + '" data-panel="' + i + '"' +
+      node.panels.push('<div class="panel" data-role="' + esc(p.role) + '" data-panel="' + i + '"' +
         (state.layout === "toggle" && i > 0 ? " hidden" : "") + '>' + body + '</div>');
     });
-    const html = [...groups.values()].map((g) => g.label
-      ? '<details class="message-group"' + (g.collapsed ? '' : ' open') + '><summary>' + esc(g.label) +
-        '</summary>' + g.panels.join('') + '</details>'
-      : g.panels.join('')).join('');
-    return tabs + '<div class="panels ' + esc(state.layout) + '">' + html + '</div>';
+
+    function renderNode(node, depth) {
+      const parts = node.panels.slice();
+      for (const child of node.children.values()) {
+        parts.push('<details class="message-group' + (depth ? ' nested' : '') + '"' +
+          (child.collapsed ? '' : ' open') + '><summary>' + esc(child.label) + '</summary>' +
+          renderNode(child, depth + 1) + '</details>');
+      }
+      return parts.join('');
+    }
+
+    return tabs + '<div class="panels ' + esc(state.layout) + '">' + renderNode(root, 0) + '</div>';
   }
 
   function renderDecision(record) {

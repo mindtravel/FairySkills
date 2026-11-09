@@ -213,3 +213,15 @@ class _CustomAdapter:
             sample_cfg,
             facet_key=(lambda record: record.facets.get(stratify)) if stratify else (lambda record: None),
         )
+
+    def iter_records(self, cfg: dict, sample_cfg: dict | None, stats: dict):
+        """Yield records without buffering the whole source.
+
+        Sampling still needs a bounded reservoir; without sampling this is a
+        true row-at-a-time stream.
+        """
+        if sample_cfg:
+            yield from self.records(cfg, sample_cfg, stats)
+            return
+        for record in self._fn(cfg):
+            yield record

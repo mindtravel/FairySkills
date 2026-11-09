@@ -220,4 +220,5 @@ body.blind mark.k-evidence, body.blind mark.k-match { background: none; color: i
 .message-group { min-width: 0; border: 1px solid #ddd; border-radius: 6px; margin: 8px 0; }
 .message-group > summary { cursor: pointer; padding: 10px; overflow-wrap: anywhere; font-weight: 600; }
 .message-group .panel { margin: 6px; }
+.message-group .message-group { margin: 6px; }
 .panel details > summary { cursor: pointer; padding: 8px; display: flex; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }

@@ -199,6 +199,41 @@ def _category_counts(cat) -> dict:
     return {"name": cat.name, "rows": cat.totals, "shown": cat.shown, "groups": cat.group_totals()}
 
 
+def iter_records(config: dict, config_path: Path, stats: dict | None = None):
+    """Stream serialized records when the adapter supports it.
+
+    Custom adapters (the large trace boards) implement `iter_records`; row
+    adapters keep the existing materialized path until their driver is fully
+    streaming. Sampling and annotation need a bounded/complete view, so those
+    still use `build_records`.
+    """
+    cfg = dict(config["source"])
+    cfg["facets"] = config.get("facets") or cfg.get("facets") or []
+    cfg["mask"] = config.get("mask") or cfg.get("mask")
+    cfg["category"] = config.get("category") or cfg.get("category")
+    cfg["only"] = config.get("only")
+    cfg["id_field"] = config.get("id_field") or cfg.get("id_field")
+    sample_cfg = config.get("sample") or cfg.get("sample")
+    kind = cfg["kind"]
+    _resolve_paths(cfg, config_path.parent)
+
+    import fairyview.adapters  # noqa: F401
+
+    if ":" in kind or kind not in registered():
+        adapter = load_custom(kind, base_dir=config_path.parent)
+    else:
+        adapter = load_adapter(kind)
+
+    adapter.validate(cfg)
+    stats = stats if stats is not None else {}
+    if hasattr(adapter, "iter_records") and not config.get("annotate") and not sample_cfg:
+        for record in adapter.iter_records(cfg, sample_cfg, stats):
+            yield record.to_dict()
+        return
+    for record in build_records(config, config_path, stats):
+        yield record
+
+
 def build_records(config: dict, config_path: Path, stats: dict | None = None) -> list[dict]:
     """Config -> serialized records.
 
@@ -213,6 +248,8 @@ def build_records(config: dict, config_path: Path, stats: dict | None = None) ->
     # `[mask]` is a top-level table; views read it from their config copy.
     cfg["mask"] = config.get("mask") or cfg.get("mask")
     cfg["category"] = config.get("category") or cfg.get("category")
+    cfg["only"] = config.get("only")
+    cfg["id_field"] = config.get("id_field") or cfg.get("id_field")
     sample_cfg = config.get("sample") or cfg.get("sample")
     kind = cfg["kind"]
     _resolve_paths(cfg, config_path.parent)

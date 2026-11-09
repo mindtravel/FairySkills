@@ -111,6 +111,7 @@ def test_all_builtins_registered():
         "hf_rows",
         "inference_rows",
         "paired",
+        "trace_rows",
     }
 
 

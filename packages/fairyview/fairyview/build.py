@@ -9,7 +9,7 @@ import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fairyview.driver import build_records  # re-exported; one driver for all adapters
+from fairyview.driver import build_records, iter_records  # re-exported; one driver for all adapters
 from fairyview.schema import SCHEMA_VERSION
 
 _PACKAGED = Path(__file__).resolve().parent / "_template"
@@ -66,32 +66,51 @@ def build(config_path: str, out_dir: str) -> Path:
     (out / "shards").mkdir(exist_ok=True)
 
     stats: dict = {}
-    records = build_records(config, config_path, stats)
     max_inline = int(config.get("max_inline_records", DEFAULT_MAX_INLINE))
 
     page = (TEMPLATE_DIR / "page.html").read_text(encoding="utf-8")
     app_js = (TEMPLATE_DIR / "app.js").read_text(encoding="utf-8")
     style_css = (TEMPLATE_DIR / "style.css").read_text(encoding="utf-8")
 
-    # Data files. A sharded review loads shard_index.js only; app.js pulls each
-    # shard on demand, so a large review does not load everything up front.
+    # Stream records into at most `max_inline` buffered records. Once the
+    # threshold is crossed, emit shards immediately instead of materializing
+    # the full review. This keeps a large trace board bounded even when one
+    # record contains all turns.
     shard_files: list[str] = []
-    if len(records) <= max_inline:
-        data_files = [("records.js", _js_embed(records, "REVIEW_RECORDS"))]
+    data_files: list[tuple[str, str]] = []
+    buffer: list[dict] = []
+    total = 0
+    sharded = False
+
+    def write_shard(chunk: list[dict]) -> None:
+        nonlocal data_files
+        index = len(shard_files)
+        name = f"shards/shard-{index:03d}.js"
+        shard_files.append(name)
+        data_files.append((name, _js_embed(chunk, f"REVIEW_SHARD_{index}")))
+
+    for record in iter_records(config, config_path, stats):
+        buffer.append(record)
+        total += 1
+        if len(buffer) > max_inline:
+            sharded = True
+            while len(buffer) > max_inline:
+                write_shard(buffer[:max_inline])
+                del buffer[:max_inline]
+
+    stats["records"] = total
+    if not sharded:
+        data_files = [("records.js", _js_embed(buffer, "REVIEW_RECORDS"))]
         data_tags = ['<script src="records.js"></script>']
     else:
-        per_shard = max_inline
-        chunks = [records[i : i + per_shard] for i in range(0, len(records), per_shard)]
-        data_files = []
-        for index, chunk in enumerate(chunks):
-            name = f"shards/shard-{index:03d}.js"
-            shard_files.append(name)
-            data_files.append((name, _js_embed(chunk, f"REVIEW_SHARD_{index}")))
+        while buffer:
+            write_shard(buffer[:max_inline])
+            del buffer[:max_inline]
         data_files.append(
             (
                 "shard_index.js",
                 _js_embed(
-                    {"shards": shard_files, "records_per_shard": per_shard, "total": len(records)},
+                    {"shards": shard_files, "records_per_shard": max_inline, "total": total},
                     "REVIEW_SHARD_INDEX",
                 ),
             )
@@ -111,7 +130,7 @@ def build(config_path: str, out_dir: str) -> Path:
         "data_key": config.get("data_key") or config.get("title", "data review"),
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "record_count": len(records),
+        "record_count": total,
         "rows_examined": stats.get("rows_examined"),
         "dropped": stats.get("dropped", {}),
         "source_files": stats.get("source_files", []),
@@ -133,7 +152,7 @@ def build(config_path: str, out_dir: str) -> Path:
                 "config_hash": view_config["config_hash"],
                 "data_key": view_config["data_key"],
                 "generated_at": view_config["generated_at"],
-                "record_count": len(records),
+                "record_count": total,
         "rows_examined": stats.get("rows_examined"),
         "dropped": stats.get("dropped", {}),
         "source_files": stats.get("source_files", []),

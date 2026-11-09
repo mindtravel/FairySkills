@@ -12,6 +12,7 @@ from fairyview.adapters import (  # noqa: F401  (import registers)
     hf_rows,
     multi_model,
     paired,
+    trace_rows,
 )
 
-__all__ = ["auto", "chat_rows", "columns_rows", "hf_rows", "multi_model", "paired"]
+__all__ = ["auto", "chat_rows", "columns_rows", "hf_rows", "multi_model", "paired", "trace_rows"]
